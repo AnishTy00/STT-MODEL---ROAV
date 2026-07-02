@@ -56,21 +56,30 @@ Implemented:
   - Runs Whisper transcription.
   - Prints transcript and timing metrics.
 
+- `audio_in/transcribe_mic_guarded.py`
+  - Continuously listens in real-time (no fixed timer constraint).
+  - Uses energy VAD to segment utterances and handles pause thresholds.
+  - Transcribes speech using guarded Whisper decode settings (e.g. no-speech probabilities, log-probabilities, known hallucination rejections).
+
 - `audio_in/vad.py`
   - Provides first-pass energy VAD.
-  - Turns frame-level speech decisions into complete utterance buffers.
+  - Turns frame-level speech decisions into complete utterance buffers with real-time properties for tracking silence duration and accumulated audio length.
+
+- `audio_in/eou.py`
+  - Performs layered End-of-Utterance (EOU) checks.
+  - Inspects transcripts for sentence-ending punctuation (`.`, `?`, `!`, `...`) and continuation patterns (such as `"and"`, `"because"`, `"then"`) to determine speaker turn-taking completion.
 
 - `audio_in/pipeline.py`
-  - Coordinates raw mic capture, VAD, utterance buffering, gating, and transcription.
+  - Coordinates raw mic capture, VAD, utterance buffering, gating, transcription, periodic partial transcripts, and transcript-aware EOU detection.
 
 - `audio_in/live_cli.py`
-  - Runs the first continuous listening loop.
-  - Prints minimal timestamped transcript lines after silence ends an utterance.
+  - Runs the continuous listening loop.
+  - Interactively renders real-time partial transcripts on the same line, converting them into final bracketed timestamped transcripts instantly when EOU is triggered.
+  - Provides a `--clean` output mode which left-truncates and scrolls long text safely according to terminal width, keeping real-time states perfectly uncluttered.
+  - Features built-in local Ollama LLM support (`--ollama`) to stream responses (such as `qwen2.5:1.5b`) character-by-character back to the console in real-time.
 
 Not implemented yet:
 
-- Partial transcripts.
-- Transcript-aware end-of-utterance detection beyond simple silence.
 - Jetson install and benchmark notes.
 
 ## Pipeline Overview
@@ -101,20 +110,25 @@ flowchart LR
         C[capture.py]
         G[audio_gate.py]
         V[vad.py]
+        E[eou.py]
         P[pipeline.py]
         T[transcriber.py]
         M[mic_test.py]
         X[transcribe_mic.py]
+        XG[transcribe_mic_guarded.py]
         L[live_cli.py]
     end
 
     D --> C
     C --> M
     C --> X
+    C --> XG
     X --> G
+    XG --> G
     G --> T
     C --> P
     V --> P
+    E --> P
     G --> P
     T --> P
     P --> L
@@ -124,6 +138,7 @@ The CLI files are thin test runners. The real reusable parts are:
 
 - `RawMicStream` in `capture.py`
 - `gate_audio` in `audio_gate.py`
+- `evaluate_eou` in `eou.py`
 - `WhisperTranscriber` in `transcriber.py`
 
 ## Current Test Flow
@@ -176,10 +191,22 @@ Continuously listen and print a transcript after speech ends:
 python -m audio_in.live_cli --device 54
 ```
 
+Continuously listen and transcribe in real-time with strict silence/noise hallucination guards:
+
+```powershell
+python -m audio_in.transcribe_mic_guarded --device 54 --end-silence-seconds 1.5
+```
+
 Show calibration, rejection, and timing diagnostics while tuning:
 
 ```powershell
 python -m audio_in.live_cli --device 54 --verbose
+```
+
+Continuously listen, transcribe, and stream responses in real-time from a local Ollama model (e.g. `qwen2.5:1.5b`):
+
+```powershell
+python -m audio_in.live_cli --device "ReSpeaker" --clean --ollama
 ```
 
 Bypass the energy gate for comparison:

@@ -39,10 +39,14 @@ def gate_audio(
     if len(frame_rms) == 0:
         return _result(mono, False, "audio too short", 0.0, min_threshold, 0.0, 0.0)
 
-    calibration_frames = max(1, int(calibration_seconds * 1000 / frame_ms))
-    noise_frames = frame_rms[: min(calibration_frames, len(frame_rms))]
-    noise_rms = float(np.percentile(noise_frames, 80))
-    threshold = max(min_threshold, noise_rms * threshold_multiplier)
+    if calibration_seconds < 0.0:
+        threshold = min_threshold
+        noise_rms = 0.0
+    else:
+        calibration_frames = max(1, int(calibration_seconds * 1000 / frame_ms))
+        noise_frames = frame_rms[: min(calibration_frames, len(frame_rms))]
+        noise_rms = float(np.percentile(noise_frames, 80))
+        threshold = max(min_threshold, noise_rms * threshold_multiplier)
 
     speech_mask = frame_rms >= threshold
     speech_frames = int(np.count_nonzero(speech_mask))

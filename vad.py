@@ -83,6 +83,22 @@ class UtteranceSegmenter:
     def active(self) -> bool:
         return self._active
 
+    @property
+    def silence_seconds(self) -> float:
+        return self._silence_run * (self.block_ms / 1000.0)
+
+    @property
+    def current_duration_seconds(self) -> float:
+        return len(self._utterance) * (self.block_ms / 1000.0)
+
+    def get_current_audio(self) -> np.ndarray:
+        if not self._utterance:
+            return np.empty(0, dtype=np.float32)
+        return np.concatenate(self._utterance).astype(np.float32, copy=False)
+
+    def force_finish(self) -> np.ndarray | None:
+        return self._finish()
+
     def push(self, samples: np.ndarray, is_speech: bool) -> np.ndarray | None:
         chunk = np.asarray(samples, dtype=np.float32).reshape(-1)
 
